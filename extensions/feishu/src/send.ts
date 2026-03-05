@@ -79,30 +79,63 @@ function parseInteractiveCardContent(parsed: unknown): string {
     return "[Interactive Card]";
   }
 
-  const candidate = parsed as { elements?: unknown };
-  if (!Array.isArray(candidate.elements)) {
-    return "[Interactive Card]";
-  }
+  const card = parsed as Record<string, unknown>;
+
+  // Extract title from card header if present
+  const header = card.header as Record<string, unknown> | undefined;
+  const titleObj = header?.title as Record<string, unknown> | undefined;
+  const title: string = typeof titleObj?.content === "string" ? (titleObj.content as string) : "";
+
+  // Support both top-level elements (schema 1.0) and body.elements (Card Kit v2 / schema 2.0)
+  const bodyObj = card.body as Record<string, unknown> | undefined;
+  const elements: unknown[] = Array.isArray(card.elements)
+    ? (card.elements as unknown[])
+    : Array.isArray(bodyObj?.elements)
+      ? (bodyObj!.elements as unknown[])
+      : [];
 
   const texts: string[] = [];
-  for (const element of candidate.elements) {
-    if (!element || typeof element !== "object") {
-      continue;
-    }
-    const item = element as {
-      tag?: string;
-      content?: string;
-      text?: { content?: string };
-    };
-    if (item.tag === "div" && typeof item.text?.content === "string") {
-      texts.push(item.text.content);
-      continue;
-    }
-    if (item.tag === "markdown" && typeof item.content === "string") {
-      texts.push(item.content);
+
+  function extractFromElements(elems: unknown[]): void {
+    for (const element of elems) {
+      if (!element || typeof element !== "object") {
+        continue;
+      }
+      const item = element as Record<string, unknown>;
+      const tag = item.tag as string | undefined;
+
+      if (tag === "div") {
+        const textObj = item.text as Record<string, unknown> | undefined;
+        if (typeof textObj?.content === "string") {
+          texts.push(textObj.content as string);
+          continue;
+        }
+      }
+      if (tag === "markdown" && typeof item.content === "string") {
+        texts.push(item.content as string);
+        continue;
+      }
+      // Support column_set layout: iterate columns and their elements
+      if (tag === "column_set" && Array.isArray(item.columns)) {
+        for (const col of item.columns as unknown[]) {
+          if (col && typeof col === "object") {
+            const colObj = col as Record<string, unknown>;
+            if (Array.isArray(colObj.elements)) {
+              extractFromElements(colObj.elements as unknown[]);
+            }
+          }
+        }
+      }
     }
   }
-  return texts.join("\n").trim() || "[Interactive Card]";
+
+  extractFromElements(elements);
+
+  const body = texts.join("\n").trim();
+  if (title && body) {
+    return `${title}\n${body}`;
+  }
+  return body || title || "[Interactive Card]";
 }
 
 function parseQuotedMessageContent(rawContent: string, msgType: string): string {
