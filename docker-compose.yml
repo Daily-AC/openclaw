@@ -9,10 +9,10 @@ services:
       CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
       CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
       CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
-      # Proxy via host Mihomo for HuggingFace/NVIDIA API access
-      HTTP_PROXY: http://host.docker.internal:7890
-      HTTPS_PROXY: http://host.docker.internal:7890
-      NO_PROXY: localhost,127.0.0.1,open.feishu.cn,api.modelverse.cn
+      # Proxy available at host.docker.internal:7890 (Mihomo)
+      # NOT set globally — Feishu WSClient does not honor NO_PROXY.
+      # Use explicitly: curl -x http://host.docker.internal:7890 <url>
+      # Or: HTTP_PROXY=http://host.docker.internal:7890 <command>
     extra_hosts:
       - "host.docker.internal:host-gateway"
     dns:
