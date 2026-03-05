@@ -283,8 +283,11 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
               queueStreamingUpdate(text, { mode: "delta" });
             }
             if (info?.kind === "final") {
-              streamText = mergeStreamingText(streamText, text);
-              await closeStreaming();
+              // Merge final text into streaming card but do NOT close it here.
+              // The card stays open across tool calls so the entire agent turn
+              // is rendered in a single streaming card. closeStreaming() is
+              // deferred to the wrapped markDispatchIdle (turn end).
+              queueStreamingUpdate(text, { mode: "snapshot" });
               deliveredFinalTexts.add(text);
             }
             // Send media even when streaming handled the text
@@ -369,13 +372,27 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         typingCallbacks.onIdle?.();
       },
       onIdle: async () => {
-        await closeStreaming();
+        // Do NOT close streaming here — onIdle fires between tool calls when
+        // the reply queue drains temporarily. We keep the card open so the
+        // entire agent turn renders in one streaming card. closeStreaming()
+        // is called from the wrapped markDispatchIdle (turn end) instead.
         typingCallbacks.onIdle?.();
       },
       onCleanup: () => {
         typingCallbacks.onCleanup?.();
       },
     });
+
+  // Wrap markDispatchIdle to close the streaming card when the entire agent
+  // turn is complete (called from bot.ts onSettled), rather than on each
+  // intermediate onIdle between tool calls.
+  const wrappedMarkDispatchIdle = () => {
+    // closeStreaming is async; fire-and-forget is fine here because
+    // markDispatchIdle itself is sync and the card close is best-effort.
+    void closeStreaming().then(() => {
+      markDispatchIdle();
+    });
+  };
 
   return {
     dispatcher,
@@ -395,6 +412,6 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
           }
         : undefined,
     },
-    markDispatchIdle,
+    markDispatchIdle: wrappedMarkDispatchIdle,
   };
 }
