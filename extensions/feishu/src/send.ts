@@ -98,11 +98,12 @@ function parseInteractiveCardContent(parsed: unknown): string {
 
   function extractFromElements(elems: unknown[]): void {
     for (const element of elems) {
+      // Support nested arrays (schema 1.0 uses elements: [[...]])
+      if (Array.isArray(element)) {
+        extractFromElements(element as unknown[]);
+        continue;
+      }
       if (!element || typeof element !== "object") {
-        // Support nested arrays (schema 1.0 uses elements: [[...]])
-        if (Array.isArray(element)) {
-          extractFromElements(element as unknown[]);
-        }
         continue;
       }
       const item = element as Record<string, unknown>;
