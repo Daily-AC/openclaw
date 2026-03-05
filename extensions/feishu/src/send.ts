@@ -99,11 +99,20 @@ function parseInteractiveCardContent(parsed: unknown): string {
   function extractFromElements(elems: unknown[]): void {
     for (const element of elems) {
       if (!element || typeof element !== "object") {
+        // Support nested arrays (schema 1.0 uses elements: [[...]])
+        if (Array.isArray(element)) {
+          extractFromElements(element as unknown[]);
+        }
         continue;
       }
       const item = element as Record<string, unknown>;
       const tag = item.tag as string | undefined;
 
+      // tag: "text" — schema 1.0 text node, content in item.text (string)
+      if (tag === "text" && typeof item.text === "string") {
+        texts.push(item.text as string);
+        continue;
+      }
       if (tag === "div") {
         const textObj = item.text as Record<string, unknown> | undefined;
         if (typeof textObj?.content === "string") {
