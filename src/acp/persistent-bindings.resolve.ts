@@ -21,7 +21,7 @@ import {
 
 function normalizeBindingChannel(value: string | undefined): ConfiguredAcpBindingChannel | null {
   const normalized = (value ?? "").trim().toLowerCase();
-  if (normalized === "discord" || normalized === "telegram") {
+  if (normalized === "discord" || normalized === "feishu" || normalized === "telegram") {
     return normalized;
   }
   return null;
@@ -146,10 +146,10 @@ export function resolveConfiguredAcpBindingSpecBySessionKey(params: {
     if (!targetConversationId) {
       continue;
     }
-    if (channel === "discord") {
+    if (channel === "discord" || channel === "feishu") {
       const spec = toConfiguredBindingSpec({
         cfg: params.cfg,
-        channel: "discord",
+        channel,
         accountId: parsedSessionKey.accountId,
         conversationId: targetConversationId,
         binding,
@@ -265,6 +265,73 @@ export function resolveConfiguredAcpBindingRecord(params: {
     }
     if (parentConversationId && parentConversationId !== conversationId) {
       const inheritedMatch = resolveDiscordBindingForConversation(parentConversationId);
+      if (inheritedMatch) {
+        return inheritedMatch;
+      }
+    }
+    return null;
+  }
+
+  if (channel === "feishu") {
+    const bindings = listAcpBindings(params.cfg);
+    const resolveFeishuBindingForConversation = (
+      targetConversationId: string,
+    ): ResolvedConfiguredAcpBinding | null => {
+      let wildcardMatch: AgentAcpBinding | null = null;
+      for (const binding of bindings) {
+        if (normalizeBindingChannel(binding.match.channel) !== "feishu") {
+          continue;
+        }
+        const accountMatchPriority = resolveAccountMatchPriority(
+          binding.match.accountId,
+          accountId,
+        );
+        if (accountMatchPriority === 0) {
+          continue;
+        }
+        const bindingConversationId = resolveBindingConversationId(binding);
+        if (!bindingConversationId || bindingConversationId !== targetConversationId) {
+          continue;
+        }
+        if (accountMatchPriority === 2) {
+          const spec = toConfiguredBindingSpec({
+            cfg: params.cfg,
+            channel: "feishu",
+            accountId,
+            conversationId: targetConversationId,
+            binding,
+          });
+          return {
+            spec,
+            record: toConfiguredAcpBindingRecord(spec),
+          };
+        }
+        if (!wildcardMatch) {
+          wildcardMatch = binding;
+        }
+      }
+      if (wildcardMatch) {
+        const spec = toConfiguredBindingSpec({
+          cfg: params.cfg,
+          channel: "feishu",
+          accountId,
+          conversationId: targetConversationId,
+          binding: wildcardMatch,
+        });
+        return {
+          spec,
+          record: toConfiguredAcpBindingRecord(spec),
+        };
+      }
+      return null;
+    };
+
+    const directMatch = resolveFeishuBindingForConversation(conversationId);
+    if (directMatch) {
+      return directMatch;
+    }
+    if (parentConversationId && parentConversationId !== conversationId) {
+      const inheritedMatch = resolveFeishuBindingForConversation(parentConversationId);
       if (inheritedMatch) {
         return inheritedMatch;
       }

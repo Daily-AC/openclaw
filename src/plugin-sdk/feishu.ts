@@ -80,3 +80,18 @@ export {
   WEBHOOK_RATE_LIMIT_DEFAULTS,
 } from "./webhook-memory-guards.js";
 export { applyBasicWebhookRequestGuards } from "./webhook-request-guards.js";
+export {
+  resolveConfiguredAcpRoute,
+  ensureConfiguredAcpRouteReady,
+} from "../acp/persistent-bindings.route.js";
+export type {
+  ConfiguredAcpBindingChannel,
+  ResolvedConfiguredAcpBinding,
+} from "../acp/persistent-bindings.types.js";
+export {
+  getSessionBindingService,
+  registerSessionBindingAdapter,
+  unregisterSessionBindingAdapter,
+  type SessionBindingAdapter,
+  type SessionBindingRecord,
+} from "../infra/outbound/session-binding-service.js";

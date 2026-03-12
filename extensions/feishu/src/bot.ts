@@ -1,4 +1,8 @@
-import type { ClawdbotConfig, RuntimeEnv } from "openclaw/plugin-sdk/feishu";
+import type {
+  ClawdbotConfig,
+  RuntimeEnv,
+  ResolvedConfiguredAcpBinding,
+} from "openclaw/plugin-sdk/feishu";
 import {
   buildAgentMediaPayload,
   buildPendingHistoryContextFromMap,
@@ -12,6 +16,9 @@ import {
   resolveOpenProviderRuntimeGroupPolicy,
   resolveDefaultGroupPolicy,
   warnMissingProviderGroupPolicyFallbackOnce,
+  ensureConfiguredAcpRouteReady,
+  getSessionBindingService,
+  resolveConfiguredAcpRoute,
 } from "openclaw/plugin-sdk/feishu";
 import { resolveFeishuAccount } from "./accounts.js";
 import { createFeishuClient } from "./client.js";
@@ -1206,6 +1213,51 @@ export async function handleFeishuMessage(params: {
       }
     }
 
+    // --- ACP configured binding route ---
+    let configuredBinding: ResolvedConfiguredAcpBinding | null = null;
+    if (!isGroup) {
+      const acpResult = resolveConfiguredAcpRoute({
+        cfg: effectiveCfg,
+        route,
+        channel: "feishu",
+        accountId: account.accountId,
+        conversationId: ctx.senderOpenId,
+      });
+      configuredBinding = acpResult.configuredBinding;
+      route = acpResult.route;
+
+      // Check dynamic thread binding (subagent-spawned sessions)
+      const dmConversationId = ctx.rootId?.trim() || ctx.threadId?.trim() || ctx.senderOpenId;
+      const threadBinding = getSessionBindingService().resolveByConversation({
+        channel: "feishu",
+        accountId: account.accountId,
+        conversationId: dmConversationId,
+      });
+      if (threadBinding?.targetSessionKey) {
+        route = {
+          ...route,
+          sessionKey: threadBinding.targetSessionKey,
+        };
+        configuredBinding = null;
+        getSessionBindingService().touch(threadBinding.bindingId);
+        log(
+          `feishu[${account.accountId}]: routed via bound conversation ${dmConversationId} -> ${threadBinding.targetSessionKey}`,
+        );
+      }
+    } else {
+      const groupConversationId = peerId;
+      const acpResult = resolveConfiguredAcpRoute({
+        cfg: effectiveCfg,
+        route,
+        channel: "feishu",
+        accountId: account.accountId,
+        conversationId: groupConversationId,
+        parentConversationId: ctx.chatId,
+      });
+      configuredBinding = acpResult.configuredBinding;
+      route = acpResult.route;
+    }
+
     const preview = ctx.content.replace(/\s+/g, " ").slice(0, 160);
     const inboundLabel = isGroup
       ? `Feishu[${account.accountId}] message in group ${ctx.chatId}`
@@ -1493,6 +1545,16 @@ export async function handleFeishuMessage(params: {
       );
     } else {
       // --- Single-agent dispatch (existing behavior) ---
+      // Ensure ACP binding session is ready (e.g. spawn ACP runtime)
+      if (configuredBinding) {
+        const acpReady = await ensureConfiguredAcpRouteReady({
+          cfg: effectiveCfg,
+          configuredBinding,
+        });
+        if (!acpReady.ok) {
+          log(`feishu[${account.accountId}]: ACP binding session not ready: ${acpReady.error}`);
+        }
+      }
       const ctxPayload = buildCtxPayloadForAgent(
         route.sessionKey,
         route.accountId,
