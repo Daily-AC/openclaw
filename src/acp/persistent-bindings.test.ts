@@ -320,6 +320,95 @@ describe("resolveConfiguredAcpBindingRecord", () => {
     expect(resolved?.spec.cwd).toBe("/workspace/repo-a");
     expect(resolved?.spec.backend).toBe("acpx");
   });
+
+  it("resolves feishu DM ACP binding", () => {
+    const cfg = {
+      ...baseCfg,
+      bindings: [
+        {
+          type: "acp",
+          agentId: "codex",
+          match: {
+            channel: "feishu",
+            accountId: "default",
+            peer: { kind: "channel", id: "ou_abc123" },
+          },
+          acp: {
+            cwd: "/workspace/feishu-project",
+          },
+        },
+      ],
+    } satisfies OpenClawConfig;
+
+    const resolved = resolveConfiguredAcpBindingRecord({
+      cfg,
+      channel: "feishu",
+      accountId: "default",
+      conversationId: "ou_abc123",
+    });
+
+    expect(resolved).not.toBeNull();
+    expect(resolved?.spec.channel).toBe("feishu");
+    expect(resolved?.spec.conversationId).toBe("ou_abc123");
+    expect(resolved?.spec.cwd).toBe("/workspace/feishu-project");
+    expect(resolved?.spec.agentId).toBe("codex");
+  });
+
+  it("resolves feishu group ACP binding via parent conversation fallback", () => {
+    const cfg = {
+      ...baseCfg,
+      bindings: [
+        {
+          type: "acp",
+          agentId: "claude",
+          match: {
+            channel: "feishu",
+            accountId: "*",
+            peer: { kind: "channel", id: "oc_groupchat123" },
+          },
+        },
+      ],
+    } satisfies OpenClawConfig;
+
+    const resolved = resolveConfiguredAcpBindingRecord({
+      cfg,
+      channel: "feishu",
+      accountId: "bot-001",
+      conversationId: "oc_groupchat123:topic:root1",
+      parentConversationId: "oc_groupchat123",
+    });
+
+    expect(resolved).not.toBeNull();
+    expect(resolved?.spec.channel).toBe("feishu");
+    expect(resolved?.spec.accountId).toBe("bot-001");
+    expect(resolved?.spec.conversationId).toBe("oc_groupchat123");
+  });
+
+  it("returns null for feishu when no matching binding exists", () => {
+    const cfg = {
+      ...baseCfg,
+      bindings: [
+        {
+          type: "acp",
+          agentId: "codex",
+          match: {
+            channel: "discord",
+            accountId: "default",
+            peer: { kind: "channel", id: "1234" },
+          },
+        },
+      ],
+    } satisfies OpenClawConfig;
+
+    const resolved = resolveConfiguredAcpBindingRecord({
+      cfg,
+      channel: "feishu",
+      accountId: "default",
+      conversationId: "ou_xyz",
+    });
+
+    expect(resolved).toBeNull();
+  });
 });
 
 describe("resolveConfiguredAcpBindingSpecBySessionKey", () => {
